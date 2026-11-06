@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Akvaryum Dünyası</title>
+<link rel="icon" href="icon.png">
+<style>
+html,body{margin:0;height:100%;background:#06365a;overflow:hidden}
+#p{position:fixed;inset:0}
+#p ruffle-player{width:100%;height:100%}
+#boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:16px;box-sizing:border-box;text-align:center;color:#dff3ff;font:bold 20px/1.4 system-ui,Arial,sans-serif;background:#06365a;transition:opacity .4s}
+#boot img{width:96px;height:96px;border-radius:22px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+#boot.hide{opacity:0;pointer-events:none}
+#cubuk{width:min(360px,100%);height:18px;border:3px solid #9fe3ff;border-radius:999px;overflow:hidden}
+#cubuk i{display:block;height:100%;width:0;background:#FFC53D;transition:width .2s}
+#durum{font-size:15px;font-weight:600;opacity:.85}
+#yeniden{min-height:52px;padding:0 22px;border:3px solid #9fe3ff;border-radius:16px;background:#FFC53D;color:#2B2050;font:800 18px system-ui,Arial,sans-serif;cursor:pointer}
+[hidden]{display:none!important}
+#bk{position:fixed;right:10px;bottom:10px;z-index:5;font:14px Arial,sans-serif}
+#bk button{width:40px;height:40px;border-radius:50%;border:2px solid #9fe3ff;background:rgba(10,90,140,.75);color:#fff;font-size:20px;cursor:pointer;opacity:.55;line-height:1}
+#bk button:hover{opacity:1}
+#bkp{display:none;position:absolute;right:0;bottom:48px;width:230px;background:linear-gradient(#5fd6f6,#1f8fc7);border:3px solid #cfefff;border-radius:16px;padding:12px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#bkp.show{display:block}
+#bkp h4{margin:0 0 8px;font-size:15px;text-align:center}
+#bkp .b{display:block;width:100%;margin:6px 0;padding:9px;border:0;border-radius:10px;background:rgba(255,255,255,.9);color:#0b4f7a;font:bold 14px Arial,sans-serif;cursor:pointer}
+#bkp small{display:block;text-align:center;opacity:.85;margin-top:4px}
+</style>
+<script>
+/* Touch rule from the launcher (Settings > Dokunmatik ekran). Same filter as the launcher's DOKUN_JS; it must run before anything else. */
+if(new URLSearchParams(location.search).get('dokun')==='0'){(function(){var son=0;function uyar(){var t=Date.now();if(t-son<4000)return;son=t;try{parent.postMessage({tip:"dokunma"},"*");}catch(e){}}
+function engel(e){if(e.pointerType!=="touch"&&e.type.indexOf("touch")!==0)return;e.preventDefault();e.stopImmediatePropagation();if(e.type==="pointerdown"||e.type==="touchstart")uyar();}
+function engelM(e){if(e.pointerType==="touch"||(e.sourceCapabilities&&e.sourceCapabilities.firesTouchEvents)){e.preventDefault();e.stopImmediatePropagation();}}
+["pointerdown","pointerup","pointermove","pointercancel","touchstart","touchend","touchmove","touchcancel"].forEach(function(n){window.addEventListener(n,engel,{capture:true,passive:false});});
+["click","dblclick","contextmenu","mousedown","mouseup","mousemove"].forEach(function(n){window.addEventListener(n,engelM,{capture:true});});})();}
+</script>
+</head><body>
+<div id="p"></div>
+<div id="bk"><button id="bkb" title="Oyun kaydı: yedekle / geri yükle">&#128190;</button>
+<div id="bkp"><h4>Oyun kaydı</h4><button class="b" id="bksave">Yedeği indir</button><button class="b" id="bkload">Yedeği yükle</button><small>Kayıt bu tarayıcıda tutulur.</small></div></div>
+<input type="file" id="bkfile" accept=".json,application/json" style="display:none">
+<div id="boot"><img src="icon.png" alt=""><div id="baslik">Akvaryum Dünyası yükleniyor…</div><div id="cubuk" hidden><i id="dolu"></i></div><div id="durum" hidden></div><button id="yeniden" hidden>Yeniden dene</button></div>
+<script>
+/* ---------- the game's files live in one pack, downloaded on first play and kept on the device ---------- */
+var PAKET_SURUM='dbdc06487dcd', PAKET_PARCALAR=["paket/dbdc06487dcd-0.uygulama.bin", "paket/dbdc06487dcd-1.uygulama.bin"], PAKET_BOYUT=87235472;
+var VT='akvaryum-paket', DEPO='depo', $=function(id){return document.getElementById(id);};
+function vtAc(){ return new Promise(function(res,rej){ var r=indexedDB.open(VT,1); r.onupgradeneeded=function(){ r.result.createObjectStore(DEPO); }; r.onsuccess=function(){ res(r.result); }; r.onerror=function(){ rej(r.error); }; }); }
+function islem(mod,fn){ return vtAc().then(function(d){ return new Promise(function(res,rej){ var t=d.transaction(DEPO,mod), q=fn(t.objectStore(DEPO)); t.oncomplete=function(){ d.close(); res(q&&q.result); }; t.onerror=t.onabort=function(){ d.close(); rej(t.error); }; }); }); }
+function bekle(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+async function indir(){
+  $('baslik').textContent='Akvaryum bu cihaza indiriliyor. Bu yalnızca ilk açılışta olur.';
+  $('cubuk').hidden=false; $('durum').hidden=false; $('yeniden').hidden=true;
+  var parcalar=[], n=0;
+  for(var i=0;i<PAKET_PARCALAR.length;i++){
+    var n0=n;
+    for(var deneme=1;;deneme++){
+      try{
+        var r=await fetch(PAKET_PARCALAR[i]+'?t='+Date.now(),{cache:'no-store'});
+        if(!r.ok) throw new Error('ag');
+        var okur=r.body.getReader(), bu=[];
+        for(;;){ var o=await okur.read(); if(o.done) break; bu.push(o.value); n+=o.value.length;
+          $('dolu').style.width=Math.min(100,n/PAKET_BOYUT*100)+'%';
+          $('durum').textContent='İndiriliyor… '+(n/1048576).toFixed(1)+' / '+(PAKET_BOYUT/1048576).toFixed(1)+' MB'; }
+        parcalar.push(new Blob(bu)); break;
+      }catch(e){ n=n0; if(deneme>=3) throw e; await bekle(2000); }
+    }
+  }
+  if(n!==PAKET_BOYUT) throw new Error('eksik');
+  $('durum').textContent='Kuruluyor…';
+  var blob=await new Response(new Blob(parcalar).stream().pipeThrough(new DecompressionStream('gzip'))).blob();
+  await islem('readwrite',function(s){ return s.put({surum:PAKET_SURUM,blob:blob},'paket'); });
+  try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
+  try{ var c=await caches.open('oyun-akvaryumd'); await c.addAll(["./", "aqlib.js", "icon.png", "ruffle/core.ruffle.16d61072ac7fdc4d5013.js", "ruffle/core.ruffle.994eeef0a471a88cd0e3.js", "ruffle/ruffle.js"]); }catch(e){}   // the page and the player, for opening without internet
+  return blob;
+}
+async function paketAl(){
+  var kayit; try{ kayit=await islem('readonly',function(s){ return s.get('paket'); }); }catch(e){}
+  if(kayit&&kayit.surum===PAKET_SURUM) return kayit.blob;
+  try{ return await indir(); }catch(e){ if(kayit&&kayit.blob) return kayit.blob; throw e; }   // no internet for an update: the old pack still plays
+}
+var MIME={wasm:'application/wasm',swf:'application/x-shockwave-flash',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',mp3:'audio/mpeg',xml:'text/xml',txt:'text/plain',json:'application/json'};
+async function vfsKur(blob){
+  var bas=new DataView(await blob.slice(0,8).arrayBuffer());
+  if(bas.getUint32(0)!==0x41515030) throw new Error('bicim');   // "AQP0"
+  var boy=bas.getUint32(4), dizin=JSON.parse(await blob.slice(8,8+boy).text()), veri=8+boy;
+  var kok=new URL('.',document.baseURI).href, asil=window.fetch;
+  window.fetch=function(input,init){
+    try{
+      var abs=new URL(typeof input==='string'?input:(input&&input.url)||String(input),document.baseURI).href;
+      if(abs.indexOf(kok)===0){
+        var rel=decodeURIComponent(abs.slice(kok.length).split('?')[0].split('#')[0]), y=dizin[rel];
+        if(y) return Promise.resolve(new Response(blob.slice(veri+y[0],veri+y[0]+y[1]),{status:200,headers:{'Content-Type':MIME[rel.split('.').pop().toLowerCase()]||'application/octet-stream','Content-Length':String(y[1])}}));
+        if(/^(app|ruffle)\//.test(rel)&&!/\.js$/.test(rel)) return Promise.resolve(new Response(null,{status:404,statusText:'Not Found'}));
+      }
+    }catch(e){}
+    return asil.apply(this,arguments);
+  };
+}
+function betik(src){ return new Promise(function(res,rej){ var s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=function(){ rej(new Error('betik')); }; document.head.appendChild(s); }); }
+
+// ---- save data & library (replaces the AIR SQLite database) ----
+var AQ_SAVE = {};
+try { AQ_SAVE = JSON.parse(localStorage.getItem('akvaryum_save') || '{}'); } catch (e) {}
+function aqInstalled(){ $('boot').classList.add('hide'); }
+function aqTouch(){}
+function aqSqlOpen(mode) { return true; }
+function aqSqlExec(text, params) {
+  try {
+    var t = String(text); params = params || {};
+    if (t.indexOf('xml_data') >= 0) {
+      var xml = window.AQ_LIB[params[0]] || window.AQ_LIB['en'];
+      return xml ? [{ data: xml }] : [];
+    }
+    var m;
+    if (/^CREATE TABLE/i.test(t)) return [];
+    if ((m = /^INSERT OR REPLACE INTO (\w+)\s*\(id,\s*(\w+)\)/i.exec(t))) {
+      var tbl = AQ_SAVE[m[1]] || (AQ_SAVE[m[1]] = {});
+      tbl[String(params[0])] = params[1];
+      try { localStorage.setItem('akvaryum_save', JSON.stringify(AQ_SAVE)); } catch (e) { console.warn('save failed', e); }
+      return [];
+    }
+    if ((m = /^SELECT (\w+) FROM (\w+) WHERE id=\?/i.exec(t))) {
+      var tb = AQ_SAVE[m[2]] || {}; var v = tb[String(params[0])];
+      if (v === undefined) return [];
+      var row = {}; row[m[1]] = v; return [row];
+    }
+    return [];
+  } catch (e) { console.error('[sql]', e); return []; }
+}
+function oyunBaslat(){
+  window.RufflePlayer = window.RufflePlayer || {};
+  window.RufflePlayer.config = {
+    autoplay: "on", unmuteOverlay: "hidden", logLevel: "error", playerRuntime: "air",
+    allowScriptAccess: true, allowNetworking: "all", openUrlMode: "deny", base: "app/", quality: "high",
+    letterbox: "off", scale: "noScale", warnOnUnsupportedContent: false, splashScreen: false,
+    contextMenu: "off", showSwfDownload: false, preloader: false
+  };
+  var r = window.RufflePlayer.newest().createPlayer();
+  $("p").appendChild(r);
+  r.ruffle().load({ url: "app/aquaair_android.swf" });
+  // hide Ruffle's own notices (e.g. the "hardware acceleration" banner)
+  var hide = function(){ try { var sr=r.shadowRoot; if(!sr) return; sr.querySelectorAll('.modal, #hardware-acceleration-modal').forEach(function(m){ m.style.display='none'; }); } catch(e){} };
+  setInterval(hide, 500);
+}
+// save backup / restore
+(function(){
+  var panel = $('bkp');
+  $('bkb').onclick = function(e){ e.stopPropagation(); panel.classList.toggle('show'); };
+  document.addEventListener('pointerdown', function(e){ if (!$('bk').contains(e.target)) panel.classList.remove('show'); }, true);
+  $('bksave').onclick = function(){
+    var data = localStorage.getItem('akvaryum_save') || '{}';
+    var d = new Date(), pad = function(n){ return (n<10?'0':'')+n; };
+    var name = 'akvaryum-kayit-' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()) + '.json';
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], {type:'application/json'})); a.download = name;
+    document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    panel.classList.remove('show');
+  };
+  var fileInput = $('bkfile');
+  $('bkload').onclick = function(){ fileInput.value = ''; fileInput.click(); };
+  fileInput.onchange = function(){
+    var f = fileInput.files[0]; if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function(){
+      try {
+        var obj = JSON.parse(rd.result);
+        if (!obj || typeof obj !== 'object' || !obj.save) throw new Error('bad');
+        if (!confirm('Bu yedek yüklenince şu anki oyun kaydının yerine geçecek. Devam edilsin mi?')) return;
+        localStorage.setItem('akvaryum_save', JSON.stringify(obj));
+        location.reload();
+      } catch (err) { alert('Bu dosya geçerli bir oyun yedeği değil.'); }
+    };
+    rd.readAsText(f);
+  };
+})();
+async function kur(){
+  try{
+    var blob=await paketAl();
+    $('baslik').textContent='Akvaryum Dünyası yükleniyor…'; $('cubuk').hidden=true; $('durum').hidden=true;
+    await vfsKur(blob);
+    await betik('aqlib.js'); await betik('ruffle/ruffle.js');
+    oyunBaslat();
+  }catch(err){
+    $('baslik').textContent=err&&err.name==='QuotaExceededError'?'Bu cihazda yeterli yer yok.':'İndirilemedi. İnternet bağlantısını kontrol edip yeniden deneyin.';
+    $('cubuk').hidden=true; $('durum').hidden=true; $('yeniden').hidden=false; $('yeniden').onclick=kur;
+  }
+}
+if(!window.indexedDB||typeof DecompressionStream!=='function'){ $('baslik').textContent='Bu tarayıcı uygun değil. Güncel Chrome, Edge ya da Safari gerekir.'; }
+else kur();
+</script></body></html>

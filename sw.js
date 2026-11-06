@@ -1,7 +1,7 @@
 // Keeps the start page and its icons on the device so the app opens without internet.
 // The app itself is not cached here: the start page stores it in the device database.
 const ON_EK = 'oyun-kabuk-';        // this site shares its web origin with other sites: only caches with this prefix are ours
-const AD = ON_EK + '20261106-154737';     // stamped at every publish: a new stamp makes devices take the new start page
+const AD = ON_EK + '20261107-005042';     // stamped at every publish: a new stamp makes devices take the new start page
 const DOSYALAR = ['./', 'index.html', 'manifest.webmanifest', 'ikon-192.png', 'ikon-512.png'];
 
 self.addEventListener('install', e => {
@@ -19,6 +19,13 @@ self.addEventListener('fetch', e => {
   if (!u.pathname.startsWith(new URL(self.registration.scope).pathname)) return;   // not this site
   if (/(uygulama\.bin|surum\.json)$/.test(u.pathname)) return;                     // always fresh from the network
   if (u.pathname.startsWith('/__')) return;                                       // the kiosk program's own pages (aktar.json import): never through here
+  if (u.pathname.startsWith(new URL('akvaryumd/', self.registration.scope).pathname)) {  // the big game's page and player: newest when online, the saved copy when not (its pack is in the device database)
+    e.respondWith(fetch(u.origin + u.pathname).then(r => {
+      if (r.ok) { const k = r.clone(); caches.open('oyun-akvaryumd').then(c => c.put(u.origin + u.pathname, k)); }
+      return r;
+    }).catch(() => caches.open('oyun-akvaryumd').then(c => c.match(u.origin + u.pathname))));
+    return;
+  }
   if (e.request.mode === 'navigate') {                                             // the page: newest when online, the saved copy when not
     e.respondWith(fetch(u.origin + u.pathname, { cache: 'no-store' }).then(r => {
       if (r.ok && /\/(index\.html)?$/.test(u.pathname)) { const k = r.clone(); caches.open(AD).then(c => c.put('index.html', k)); }   // only the start page itself is kept
