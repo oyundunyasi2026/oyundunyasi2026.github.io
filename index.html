@@ -37,7 +37,7 @@ button.ikincil{background:#fff;font-size:17px;min-height:48px}
   <p class="not" id="durum" hidden></p>
   <button class="ikincil" id="yeniden" hidden>Yeniden dene</button>
   <button class="ikincil" id="eski" hidden>Eski sürümle devam et</button>
-  <p class="not" style="font-size:11px;opacity:.6" id="kabuk">20261107-005042</p>
+  <p class="not" style="font-size:11px;opacity:.6" id="kabuk">20261107-021510</p>
 </main>
 <script>
 (async()=>{
@@ -60,11 +60,43 @@ function calistir(html){
 
 /* ---------- download with progress; the file is "OYN0" followed by the gzipped app, in pieces listed in surum.json (GitHub refuses files over 100 MiB) ---------- */
 const bekle=ms=>new Promise(r=>setTimeout(r,ms));
+/* ---------- games too big for the app (surum.json "ekler"): fetched in the same install, kept in their own database ---------- */
+let ekler=[];
+async function ekIndir(e){
+  const ac=()=>new Promise((res,rej)=>{ const r=indexedDB.open(e.db,1); r.onupgradeneeded=()=>r.result.createObjectStore('depo'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });
+  const yap=async(mod,fn)=>{ const d=await ac(); return new Promise((res,rej)=>{ const t=d.transaction('depo',mod), q=fn(t.objectStore('depo')); t.oncomplete=()=>{ d.close(); res(q&&q.result); }; t.onerror=t.onabort=()=>{ d.close(); rej(t.error); }; }); };
+  const k=await yap('readonly',s=>s.get('paket')).catch(()=>undefined);
+  if(k&&k.surum===e.surum) return;
+  goster('cubuk',true); goster('durum',true); $('dolu').style.width='0';
+  const bloklar=[], mb=x=>(x/1048576).toFixed(1); let n=0;
+  for(const ad of e.parcalar){
+    const n0=n;
+    for(let deneme=1;;deneme++){
+      try{
+        const r=await fetch(ad+'?t='+Date.now(),{cache:'no-store'});
+        if(!r.ok) throw new Error('ag');
+        const okur=r.body.getReader(), bu=[];
+        for(;;){ const {done,value}=await okur.read(); if(done) break; bu.push(value); n+=value.length;
+          $('dolu').style.width=Math.min(100,n/e.boyut*100)+'%';
+          $('durum').textContent=e.ad+' indiriliyor… '+mb(n)+' / '+mb(e.boyut)+' MB'; }
+        bloklar.push(new Blob(bu)); break;
+      }catch(x){ n=n0; if(deneme>=3) throw x; await bekle(2000); }
+    }
+  }
+  if(n!==e.boyut) throw new Error('eksik');
+  $('durum').textContent=e.ad+' kuruluyor…';
+  const okur=new Blob(bloklar).stream().pipeThrough(new DecompressionStream('gzip')).getReader(), dilim=[]; let bu=[], m=0;   // by hand: Response.blob() fails with 'Failed to fetch' at this size
+  for(;;){ const {done,value}=await okur.read(); if(done) break; bu.push(value); m+=value.length; if(m>=16777216){ dilim.push(new Blob(bu)); bu=[]; m=0; } }
+  dilim.push(new Blob(bu)); const blob=new Blob(dilim);
+  await yap('readwrite',s=>s.put({surum:e.surum,blob},'paket'));
+  try{ await (await caches.open('oyun-'+e.id)).addAll(e.kabuk); }catch(_){}
+}
+
 async function indir(){
   goster('cubuk',true); goster('durum',true); $('durum').textContent='İndiriliyor…';
   const s=await fetch('surum.json?t='+Date.now(),{cache:'no-store'});
   if(!s.ok) throw new Error('ag');
-  const j=await s.json(), adlar=Array.isArray(j.parcalar)&&j.parcalar.length?j.parcalar:['uygulama.bin'], parcalar=[]; let n=0, toplam=+j.boyut||0;
+  const j=await s.json(); ekler=Array.isArray(j.ekler)?j.ekler:[]; const adlar=Array.isArray(j.parcalar)&&j.parcalar.length?j.parcalar:['uygulama.bin'], parcalar=[]; let n=0, toplam=+j.boyut||0;
   for(const ad of adlar){
     const iz=parcalar.length, n0=n;
     for(let deneme=1;;deneme++){
@@ -96,6 +128,7 @@ async function kur(eski,guncelleme){
     const html=await indir();
     await koy('uygulama',{html,zaman:Date.now()});
     try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(_){}
+    for(const e of ekler){ try{ await ekIndir(e); }catch(_){} }   // one update brings everything; if this fails the game downloads itself when opened
     calistir(html);
   }catch(err){
     ekran('⚠️',guncelleme?'Güncellenemedi':'İndirilemedi',err&&err.name==='QuotaExceededError'?'Bu cihazda yeterli yer yok.':'İnternet bağlantısını kontrol edip yeniden deneyin.');

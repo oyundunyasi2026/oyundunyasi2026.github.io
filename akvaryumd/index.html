@@ -40,7 +40,7 @@ function engelM(e){if(e.pointerType==="touch"||(e.sourceCapabilities&&e.sourceCa
 <div id="boot"><img src="icon.png" alt=""><div id="baslik">Akvaryum Dünyası yükleniyor…</div><div id="cubuk" hidden><i id="dolu"></i></div><div id="durum" hidden></div><button id="yeniden" hidden>Yeniden dene</button></div>
 <script>
 /* ---------- the game's files live in one pack, downloaded on first play and kept on the device ---------- */
-var PAKET_SURUM='dbdc06487dcd', PAKET_PARCALAR=["paket/dbdc06487dcd-0.uygulama.bin", "paket/dbdc06487dcd-1.uygulama.bin"], PAKET_BOYUT=87235472;
+var PAKET_SURUM='ab2ac2095588', PAKET_PARCALAR=["paket/ab2ac2095588-0.uygulama.bin", "paket/ab2ac2095588-1.uygulama.bin"], PAKET_BOYUT=86599372;
 var VT='akvaryum-paket', DEPO='depo', $=function(id){return document.getElementById(id);};
 function vtAc(){ return new Promise(function(res,rej){ var r=indexedDB.open(VT,1); r.onupgradeneeded=function(){ r.result.createObjectStore(DEPO); }; r.onsuccess=function(){ res(r.result); }; r.onerror=function(){ rej(r.error); }; }); }
 function islem(mod,fn){ return vtAc().then(function(d){ return new Promise(function(res,rej){ var t=d.transaction(DEPO,mod), q=fn(t.objectStore(DEPO)); t.oncomplete=function(){ d.close(); res(q&&q.result); }; t.onerror=t.onabort=function(){ d.close(); rej(t.error); }; }); }); }
@@ -65,10 +65,12 @@ async function indir(){
   }
   if(n!==PAKET_BOYUT) throw new Error('eksik');
   $('durum').textContent='Kuruluyor…';
-  var blob=await new Response(new Blob(parcalar).stream().pipeThrough(new DecompressionStream('gzip'))).blob();
+  var okur2=new Blob(parcalar).stream().pipeThrough(new DecompressionStream('gzip')).getReader(), dilim=[], bu2=[], m=0;   // by hand: Response.blob() fails with 'Failed to fetch' at this size
+  for(;;){ var o2=await okur2.read(); if(o2.done) break; bu2.push(o2.value); m+=o2.value.length; if(m>=16777216){ dilim.push(new Blob(bu2)); bu2=[]; m=0; } }
+  dilim.push(new Blob(bu2)); var blob=new Blob(dilim);
   await islem('readwrite',function(s){ return s.put({surum:PAKET_SURUM,blob:blob},'paket'); });
   try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
-  try{ var c=await caches.open('oyun-akvaryumd'); await c.addAll(["./", "aqlib.js", "icon.png", "ruffle/core.ruffle.16d61072ac7fdc4d5013.js", "ruffle/core.ruffle.994eeef0a471a88cd0e3.js", "ruffle/ruffle.js"]); }catch(e){}   // the page and the player, for opening without internet
+  try{ var c=await caches.open('oyun-akvaryumd'); await c.addAll(["./", "aqlib.js", "icon.png", "app/aquaair_android.swf", "ruffle/core.ruffle.16d61072ac7fdc4d5013.js", "ruffle/core.ruffle.994eeef0a471a88cd0e3.js", "ruffle/ruffle.js"]); }catch(e){}   // the page and the player, for opening without internet
   return blob;
 }
 async function paketAl(){
@@ -88,7 +90,7 @@ async function vfsKur(blob){
       if(abs.indexOf(kok)===0){
         var rel=decodeURIComponent(abs.slice(kok.length).split('?')[0].split('#')[0]), y=dizin[rel];
         if(y) return Promise.resolve(new Response(blob.slice(veri+y[0],veri+y[0]+y[1]),{status:200,headers:{'Content-Type':MIME[rel.split('.').pop().toLowerCase()]||'application/octet-stream','Content-Length':String(y[1])}}));
-        if(/^(app|ruffle)\//.test(rel)&&!/\.js$/.test(rel)) return Promise.resolve(new Response(null,{status:404,statusText:'Not Found'}));
+        if(/^(app|ruffle)\//.test(rel)&&!/\.(js|swf)$/.test(rel)) return Promise.resolve(new Response(null,{status:404,statusText:'Not Found'}));
       }
     }catch(e){}
     return asil.apply(this,arguments);
