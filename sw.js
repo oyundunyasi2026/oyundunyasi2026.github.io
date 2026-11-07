@@ -1,7 +1,7 @@
 // Keeps the start page and its icons on the device so the app opens without internet.
 // The app itself is not cached here: the start page stores it in the device database.
 const ON_EK = 'oyun-kabuk-';        // this site shares its web origin with other sites: only caches with this prefix are ours
-const AD = ON_EK + '20261107-021510';     // stamped at every publish: a new stamp makes devices take the new start page
+const AD = ON_EK + '20261107-083732';     // stamped at every publish: a new stamp makes devices take the new start page
 const DOSYALAR = ['./', 'index.html', 'manifest.webmanifest', 'ikon-192.png', 'ikon-512.png'];
 
 self.addEventListener('install', e => {
