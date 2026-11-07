@@ -1,7 +1,7 @@
 // Keeps the start page and its icons on the device so the app opens without internet.
 // The app itself is not cached here: the start page stores it in the device database.
 const ON_EK = 'oyun-kabuk-';        // this site shares its web origin with other sites: only caches with this prefix are ours
-const AD = ON_EK + '20261107-093408';     // stamped at every publish: a new stamp makes devices take the new start page
+const AD = ON_EK + '20261107-133734';     // stamped at every publish: a new stamp makes devices take the new start page
 const DOSYALAR = ['./', 'index.html', 'manifest.webmanifest', 'ikon-192.png', 'ikon-512.png'];
 
 self.addEventListener('install', e => {
@@ -27,8 +27,12 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (e.request.mode === 'navigate') {                                             // the page: newest when online, the saved copy when not
+    const kok = new URL(self.registration.scope).pathname;
     e.respondWith(fetch(u.origin + u.pathname, { cache: 'no-store' }).then(r => {
-      if (r.ok && /\/(index\.html)?$/.test(u.pathname)) { const k = r.clone(); caches.open(AD).then(c => c.put('index.html', k)); }   // only the start page itself is kept
+      // only the start page itself is kept: /oda/ and the other start addresses are small pages that send the
+      // device on to it, and keeping one of those as the start page made every offline opening reload forever
+      if (r.ok && !r.redirected && (u.pathname === kok || u.pathname === kok + 'index.html')) { const k = r.clone(); e.waitUntil(caches.open(AD).then(c => c.put('index.html', k))); }
+      if (r.redirected) return Response.redirect(r.url, 302);                      // /oda without its slash: a followed redirect cannot be handed to a page
       return r;
     }).catch(() => caches.open(AD).then(c => c.match('index.html'))));
     return;
