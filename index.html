@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="tr" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="only light">
+<style>:root{color-scheme:only light}</style>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Oyun Dünyası: küçük çocuklar için sesli yönlendirmeli oyunlar ve öğrenme uygulamaları.">
+<meta name="theme-color" content="#2B2050">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="ikon-192.png">
+<title>Oyun Dünyası</title>
+<style>
+:root{--ink:#2B2050;--muted:#7A6F8C;--sun:#FFC53D;--paper:#fff}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:linear-gradient(160deg,#FFE3F1,#E9DCFF 55%,#CFEFFF);display:flex;flex-direction:column;align-items:center;overflow-y:auto;padding:16px}
+main{margin:auto 0;width:min(440px,100%);background:var(--paper);border:4px solid var(--ink);border-radius:28px;padding:24px 20px;box-shadow:0 10px 0 rgba(43,32,80,.2);display:flex;flex-direction:column;gap:14px;text-align:center}
+.simge{font-size:64px;line-height:1}
+h1{margin:0;font-size:26px}
+p{margin:0;font-weight:600;line-height:1.4}
+.not{font-size:14px;color:var(--muted)}
+button{min-height:56px;font:inherit;font-size:19px;font-weight:800;border:3px solid var(--ink);border-radius:18px;background:var(--sun);color:var(--ink);box-shadow:0 6px 0 rgba(43,32,80,.2);cursor:pointer;padding:0 20px}
+button:active{transform:translateY(4px);box-shadow:none}
+button.ikincil{background:#fff;font-size:17px;min-height:48px}
+.cubuk{height:18px;border:3px solid var(--ink);border-radius:999px;overflow:hidden;background:#F3EFFC}
+.cubuk i{display:block;height:100%;width:0;background:var(--sun);transition:width .2s}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main id="kutu" hidden>
+  <div class="simge" id="simge">🎮</div>
+  <h1 id="baslik">Oyun Dünyası</h1>
+  <p id="aciklama">Oyunlar bu cihaza indiriliyor. Bu yalnızca ilk açılışta ve güncellemelerde olur.</p>
+  <div class="cubuk" id="cubuk" hidden><i id="dolu"></i></div>
+  <p class="not" id="durum" hidden></p>
+  <button class="ikincil" id="yeniden" hidden>Yeniden dene</button>
+  <button class="ikincil" id="eski" hidden>Eski sürümle devam et</button>
+  <p class="not" style="font-size:11px;opacity:.6" id="kabuk">20261112-140215</p>
+</main>
+<script>
+(async()=>{
+'use strict';
+const $=id=>document.getElementById(id);
+const goster=(id,ac)=>{ $(id).hidden=!ac; };
+/* ---------- device storage: the app itself, so it opens without internet ---------- */
+const VT='oyun-dunyasi-kurulum', DEPO='depo';
+const vtAc=()=>new Promise((res,rej)=>{ const r=indexedDB.open(VT,1); r.onupgradeneeded=()=>r.result.createObjectStore(DEPO); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });
+const islem=async(mod,fn)=>{ const d=await vtAc(); return new Promise((res,rej)=>{ const t=d.transaction(DEPO,mod), q=fn(t.objectStore(DEPO)); t.oncomplete=()=>{ d.close(); res(q&&q.result); }; t.onerror=t.onabort=()=>{ d.close(); rej(t.error); }; }); };
+const al=k=>islem('readonly',s=>s.get(k)).catch(()=>undefined);
+const koy=(k,v)=>islem('readwrite',s=>s.put(v,k));
+
+/* ---------- run the app in this page, at this address ---------- */
+const EK='<scr'+'ipt>window.OYUN_WEB=true</scr'+'ipt><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#2B2050"><link rel="apple-touch-icon" href="ikon-192.png">';
+function calistir(html){   // an install made before 2026-11-07 keeps the app as one string
+  html=html.replace('<head>','<head>'+EK);
+  document.open(); document.write(html); document.close();
+}
+async function calistirBlob(blob){   // piece by piece: as one string the app takes about 650 MB, and a second copy of it brought the page down
+  const okur=blob.stream().pipeThrough(new TextDecoderStream()).getReader(); let ilk=true;
+  document.open();
+  for(;;){ const {done,value}=await okur.read(); if(done) break; document.write(ilk?value.replace('<head>','<head>'+EK):value); ilk=false; }
+  document.close();
+}
+const baslat=k=>k.blob?calistirBlob(k.blob):calistir(k.html);
+
+/* ---------- download with progress; the file is "OYN0" followed by the gzipped app, in pieces listed in surum.json (GitHub refuses files over 100 MiB) ---------- */
+const bekle=ms=>new Promise(r=>setTimeout(r,ms));
+/* ---------- games too big for the app (surum.json "ekler"): fetched in the same install, kept in their own database ---------- */
+let ekler=[];
+async function ekIndir(e){
+  const ac=()=>new Promise((res,rej)=>{ const r=indexedDB.open(e.db,1); r.onupgradeneeded=()=>r.result.createObjectStore('depo'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });
+  const yap=async(mod,fn)=>{ const d=await ac(); return new Promise((res,rej)=>{ const t=d.transaction('depo',mod), q=fn(t.objectStore('depo')); t.oncomplete=()=>{ d.close(); res(q&&q.result); }; t.onerror=t.onabort=()=>{ d.close(); rej(t.error); }; }); };
+  const k=await yap('readonly',s=>s.get('paket')).catch(()=>undefined);
+  if(k&&k.surum===e.surum) return;
+  goster('cubuk',true); goster('durum',true); $('dolu').style.width='0';
+  const bloklar=[], mb=x=>(x/1048576).toFixed(1); let n=0;
+  for(const ad of e.parcalar){
+    const n0=n;
+    for(let deneme=1;;deneme++){
+      try{
+        const r=await fetch(ad+'?t='+Date.now(),{cache:'no-store'});
+        if(!r.ok) throw new Error('ag');
+        const okur=r.body.getReader(), bu=[];
+        for(;;){ const {done,value}=await okur.read(); if(done) break; bu.push(value); n+=value.length;
+          $('dolu').style.width=Math.min(100,n/e.boyut*100)+'%';
+          $('durum').textContent=e.ad+' indiriliyor… '+mb(n)+' / '+mb(e.boyut)+' MB'; }
+        bloklar.push(new Blob(bu)); break;
+      }catch(x){ n=n0; if(deneme>=3) throw x; await bekle(2000); }
+    }
+  }
+  if(n!==e.boyut) throw new Error('eksik');
+  $('durum').textContent=e.ad+' kuruluyor…';
+  const okur=new Blob(bloklar).stream().pipeThrough(new DecompressionStream('gzip')).getReader(), dilim=[]; let bu=[], m=0;   // by hand: Response.blob() fails with 'Failed to fetch' at this size
+  for(;;){ const {done,value}=await okur.read(); if(done) break; bu.push(value); m+=value.length; if(m>=16777216){ dilim.push(new Blob(bu)); bu=[]; m=0; } }
+  dilim.push(new Blob(bu)); const blob=new Blob(dilim);
+  await yap('readwrite',s=>s.put({surum:e.surum,blob},'paket'));
+  try{ await (await caches.open('oyun-'+e.id)).addAll(e.kabuk); }catch(_){}
+}
+
+async function indir(){
+  goster('cubuk',true); goster('durum',true); $('durum').textContent='İndiriliyor…';
+  const s=await fetch('surum.json?t='+Date.now(),{cache:'no-store'});
+  if(!s.ok) throw new Error('ag');
+  const j=await s.json(); ekler=Array.isArray(j.ekler)?j.ekler:[]; const adlar=Array.isArray(j.parcalar)&&j.parcalar.length?j.parcalar:['uygulama.bin'], parcalar=[]; let n=0, toplam=+j.boyut||0;
+  for(const ad of adlar){
+    const n0=n;
+    for(let deneme=1;;deneme++){
+      try{
+        const r=await fetch(ad+'?t='+Date.now(),{cache:'no-store'});
+        if(!r.ok) throw new Error('ag');
+        if(!toplam) toplam=+r.headers.get('content-length')||0;
+        const okur=r.body.getReader(), bu=[];
+        for(;;){ const {done,value}=await okur.read(); if(done) break; bu.push(value); n+=value.length;
+          $('dolu').style.width=(toplam?Math.min(100,n/toplam*100):50)+'%';
+          $('durum').textContent='İndiriliyor… '+(n/1048576).toFixed(1)+(toplam?' / '+(toplam/1048576).toFixed(1):'')+' MB'; }
+        parcalar.push(new Blob(bu)); break;
+      }catch(e){ n=n0; if(deneme>=3) throw e; await bekle(2000); }   // a short network drop costs one piece, not the whole download
+    }
+  }
+  if(j.boyut&&n!==j.boyut) throw new Error('eksik');
+  const paket=new Blob(parcalar), bas=new Uint8Array(await paket.slice(0,4).arrayBuffer());
+  if(paket.size<100||String.fromCharCode(...bas)!=='OYN0') throw new Error('bicim');
+  $('durum').textContent='Kuruluyor…';
+  const okur=paket.slice(4).stream().pipeThrough(new DecompressionStream('gzip')).getReader(), dilim=[]; let bu=[], m=0;
+  for(;;){ const {done,value}=await okur.read(); if(done) break; bu.push(value); m+=value.length; if(m>=16777216){ dilim.push(new Blob(bu)); bu=[]; m=0; } }
+  dilim.push(new Blob(bu));
+  return new Blob(dilim);
+}
+
+function ekran(simge,baslik,aciklama){ $('simge').textContent=simge; $('baslik').textContent=baslik; $('aciklama').textContent=aciklama;
+  ['cubuk','durum','yeniden','eski'].forEach(id=>goster(id,false)); goster('kutu',true); }
+
+async function kur(eski,guncelleme){
+  ekran(guncelleme?'⬇️':'🎮',guncelleme?'Güncelleniyor':'Oyun Dünyası',guncelleme?'Yeni sürüm indiriliyor. Yapılan oyunlar ve ayarlar silinmez.':'Oyunlar bu cihaza indiriliyor. Bu yalnızca ilk açılışta ve güncellemelerde olur.');
+  try{
+    const blob=await indir();
+    await koy('uygulama',{blob,zaman:Date.now()});
+    try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(_){}
+    for(const e of ekler){ try{ await ekIndir(e); }catch(_){} }   // one update brings everything; if this fails the game downloads itself when opened
+    location.reload();   // starts from what was just stored, with nothing of the download left in memory
+  }catch(err){
+    ekran('⚠️',guncelleme?'Güncellenemedi':'İndirilemedi',err&&err.name==='QuotaExceededError'?'Bu cihazda yeterli yer yok.':'İnternet bağlantısını kontrol edip yeniden deneyin.');
+    goster('yeniden',true); $('yeniden').onclick=()=>kur(eski,guncelleme);
+    if(eski){ goster('eski',true); $('eski').onclick=async()=>baslat(await al('uygulama')); }
+  }
+}
+
+/* ---------- start ---------- */
+if('serviceWorker' in navigator){ try{ navigator.serviceWorker.register('sw.js').catch(()=>{}); }catch(e){} }
+if(!window.indexedDB||typeof DecompressionStream!=='function'){
+  ekran('⚠️','Bu tarayıcı uygun değil','Uygulama güncel bir Chrome, Edge ya da Safari ile açılır.'); return;
+}
+// 2026-10-21: started at /oda/ (the kiosk address) while offline, the service worker hands out this saved page AT /oda/; the app's relative
+// addresses (surum.json, ./?guncelle=1) then point into /oda/ and give 404. Move to the site root first; the view name is kept.
+{ const m=location.pathname.match(/^(.*\/)(tahta|sinif|oda|kareler)\/(index\.html)?$/);
+  if(m){ try{ localStorage.setItem('oyun-dunyasi-gorunum',m[2]); }catch(e){} try{ history.replaceState(null,'',m[1]+location.search+location.hash); }catch(e){} } }
+const sorgu=new URLSearchParams(location.search), istenen=sorgu.has('guncelle');
+// ?gorunum=oda (the kiosk address) must reach the app although the address is cleaned below: it is handed over in storage
+const gorunum=sorgu.get('gorunum')||location.hash.replace(/^#(gorunum=)?/,'');   /* ?gorunum=oda or the shorter #oda */
+if(['tahta','sinif','oda','kareler'].includes(gorunum)){ try{ localStorage.setItem('oyun-dunyasi-gorunum',gorunum); }catch(e){} }
+if(location.search||location.hash){ try{ history.replaceState(null,'',location.pathname); }catch(e){} }
+const kayitli=await islem('readonly',s=>s.getKey('uygulama')).catch(()=>undefined)!==undefined;   // an update must not read the old app into memory first
+const kayit=kayitli&&!istenen?await al('uygulama'):null;
+if(kayit&&(kayit.blob||kayit.html)){ baslat(kayit); return; }
+kur(kayitli,kayitli);
+})();
+</script>
+</body>
+</html>

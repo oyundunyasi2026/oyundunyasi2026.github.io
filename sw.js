@@ -1,0 +1,41 @@
+// Keeps the start page and its icons on the device so the app opens without internet.
+// The app itself is not cached here: the start page stores it in the device database.
+const ON_EK = 'oyun-kabuk-';        // this site shares its web origin with other sites: only caches with this prefix are ours
+const AD = ON_EK + '20261112-140215';     // stamped at every publish: a new stamp makes devices take the new start page
+const DOSYALAR = ['./', 'index.html', 'manifest.webmanifest', 'ikon-192.png', 'ikon-512.png'];
+
+self.addEventListener('install', e => {
+  // 'reload' skips the browser's own 10-minute copy, so the saved start page is really the published one
+  e.waitUntil(caches.open(AD).then(c => c.addAll(DOSYALAR.map(d => new Request(d, { cache: 'reload' })))).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith(ON_EK) && k !== AD).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+});
+
+self.addEventListener('fetch', e => {
+  const u = new URL(e.request.url);
+  if (e.request.method !== 'GET' || u.origin !== location.origin) return;          // Claude API calls and the like go straight out
+  if (!u.pathname.startsWith(new URL(self.registration.scope).pathname)) return;   // not this site
+  if (/(uygulama\.bin|surum\.json)$/.test(u.pathname)) return;                     // always fresh from the network
+  if (u.pathname.startsWith('/__')) return;                                       // the kiosk program's own pages (aktar.json import): never through here
+  if (u.pathname.startsWith(new URL('akvaryumd/', self.registration.scope).pathname)) {  // the big game's page and player: newest when online, the saved copy when not (its pack is in the device database)
+    e.respondWith(fetch(u.origin + u.pathname).then(r => {
+      if (r.ok) { const k = r.clone(); caches.open('oyun-akvaryumd').then(c => c.put(u.origin + u.pathname, k)); }
+      return r;
+    }).catch(() => caches.open('oyun-akvaryumd').then(c => c.match(u.origin + u.pathname))));
+    return;
+  }
+  if (e.request.mode === 'navigate') {                                             // the page: newest when online, the saved copy when not
+    const kok = new URL(self.registration.scope).pathname;
+    e.respondWith(fetch(u.origin + u.pathname, { cache: 'no-store' }).then(r => {
+      // only the start page itself is kept: /oda/ and the other start addresses are small pages that send the
+      // device on to it, and keeping one of those as the start page made every offline opening reload forever
+      if (r.ok && !r.redirected && (u.pathname === kok || u.pathname === kok + 'index.html')) { const k = r.clone(); e.waitUntil(caches.open(AD).then(c => c.put('index.html', k))); }
+      if (r.redirected) return Response.redirect(r.url, 302);                      // /oda without its slash: a followed redirect cannot be handed to a page
+      return r;
+    }).catch(() => caches.open(AD).then(c => c.match('index.html'))));
+    return;
+  }
+  e.respondWith(caches.open(AD).then(c => c.match(e.request, { ignoreSearch: true })).then(r => r || fetch(e.request)));
+});
